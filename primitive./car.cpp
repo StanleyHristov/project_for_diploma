@@ -27,6 +27,10 @@ public:
     digitalWrite(motorPin2, LOW);
   }
 
+  bool isMoving() {
+    return (digitalRead(motorPin1) == HIGH || digitalRead(motorPin2) == HIGH);
+  }
+
 private:
   int motorPin1;
   int motorPin2;
@@ -36,15 +40,22 @@ void setupIRSensor(IRSensor &sensor) {
   pinMode(sensor.pin, INPUT);
 }
 
-bool isObstacleDetected(const IRSensor &sensor) {
-  return analogRead(sensor.pin) < sensor.threshold;
+bool isWhiteLineDetected(const IRSensor &sensor) {
+  return analogRead(sensor.pin) > sensor.threshold;
 }
 
-void moveBasedOnIRSensors(const IRSensor &leftSensor, const IRSensor &rightSensor, MotorController &motorController) {
-  if (isObstacleDetected(leftSensor)) {
-    motorController.moveRight();
-  } else if (isObstacleDetected(rightSensor)) {
-    motorController.moveLeft();
+void moveBasedOnIRWhiteLines(const IRSensor &leftSensor, const IRSensor &rightSensor, MotorController &motorController) {
+  bool leftLineDetected = isWhiteLineDetected(leftSensor);
+  bool rightLineDetected = isWhiteLineDetected(rightSensor);
+
+  if (leftLineDetected || rightLineDetected) {
+    if (leftLineDetected && !rightLineDetected) {
+      motorController.moveRight();
+    } else if (!leftLineDetected && rightLineDetected) {
+      motorController.moveLeft();
+    } else {
+      motorController.stop();
+    }
   } else {
     motorController.stop();
   }
@@ -52,6 +63,8 @@ void moveBasedOnIRSensors(const IRSensor &leftSensor, const IRSensor &rightSenso
 
 const int timerInterval = 100000;
 volatile bool timerFlag = false;
+unsigned long previousMillis = 0;
+const long motorTimeout = 2000;
 
 void setup() {
   Serial.begin(9600);
@@ -69,12 +82,19 @@ void setup() {
 }
 
 void loop() {
+  unsigned long currentMillis = millis();
+
   if (timerFlag) {
     IRSensor leftIRSensor = {A0, 500};
     IRSensor rightIRSensor = {A1, 500};
     MotorController motorController(motor1Pin, motor2Pin);
 
-    moveBasedOnIRSensors(leftIRSensor, rightIRSensor, motorController);
+    moveBasedOnIRWhiteLines(leftIRSensor, rightIRSensor, motorController);
+
+    if (motorController.isMoving() && (currentMillis - previousMillis >= motorTimeout)) {
+      motorController.stop();
+      previousMillis = currentMillis;
+    }
 
     timerFlag = false;
   }
